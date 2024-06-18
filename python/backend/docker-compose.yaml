@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=vk-stats-db
+      - POSTGRES_USER=vk-stats-admin
+      - POSTGRES_PASSWORD=vk-stats-password
+    restart: always
+    ports:
+      - "28557:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      cache_from:
+        - python-base:latest
+        - python-builder:latest
+        - python-prod:latest
+    env_file: ".env.production"
+    restart: unless-stopped
+    volumes:
+      - ./data/backend/:/backend/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.backend.loadbalancer.server.port=8888"
+      - "traefik.http.routers.backend.rule=Host(`backend.vk-stats.com`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=myresolver"
+
+  traefik:
+    image: traefik:v2.5
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/letsencrypt:/letsencrypt # Local folder to save the certificates
+    command:
+      # - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.email=grishagti@yandex.ru"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
